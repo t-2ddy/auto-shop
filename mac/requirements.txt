@@ -1,0 +1,6 @@
+pyobjc-framework-Cocoa
+pyobjc-framework-Quartz
+pyobjc-framework-Vision
+pyobjc-framework-ApplicationServices
+Pillow
+customtkinter
