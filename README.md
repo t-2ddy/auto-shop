@@ -137,6 +137,95 @@ windows/config.py        # coords, timing, keywords, item costs
 windows/find_window.py   # list Epic Seven windows
 windows/ut/              # live-window calibration harnesses
 windows/E7ShopBot.spec   # PyInstaller build (if present)
+mac/main.py              # CLI entry: find window → run_loop, Q to stop
+mac/loop.py              # refresh → OCR/buy → scroll → OCR/buy (same as windows)
+mac/actions.py           # do_refresh / do_buy / do_scroll
+mac/capture.py           # CGWindowListCreateImage window screenshot
+mac/ocr.py               # Vision-framework OCR
+mac/input.py             # CGEventPost (HID tap) click + scroll primitives
+mac/keys.py              # POSIX raw-mode "press Q to stop" (no msvcrt on Mac)
+mac/config.py            # coords, timing, keywords, item costs
+mac/window.py            # find Epic Seven window via CGWindowListCopyWindowInfo
+mac/find_window.py       # list Epic Seven windows
+mac/ut/                  # live-window calibration harnesses
 LuaShakeicon.ico/.png    # app icons (repo root)
 ```
+
+## Mac build
+
+The Mac build mirrors the Windows pipeline (refresh → OCR/buy → scroll →
+OCR/buy → repeat), but the underlying OS primitives are different:
+
+```text
+Find Epic Seven window (mac/window.py)
+→ activate app (bring to foreground/key)
+→ refresh (real HID click + confirm)
+→ CGWindowListCreateImage capture → Vision OCR → keyword match
+→ buy (row Y from OCR, confirm) if Mystic Medal / Covenant Bookmark
+→ real HID scroll-wheel event
+→ OCR + buy again
+→ repeat until Q is pressed or Ctrl+C
+```
+
+**Key difference from Windows:** Epic Seven's Mac (iOS-wrapper) build only
+reacts to real HID-level input events (`CGEventPost` via `kCGHIDEventTap`),
+not process-local events (`CGEventPostToPid`) — confirmed via
+`mac/ut/test_click.py`. That means, unlike the Windows build's invisible
+`PostMessage` clicks, **the Mac bot visibly takes over your real mouse
+cursor** while it runs, and requires the game window to be activated
+(foreground/key) before each interaction. Because the mouse isn't free for
+you to use, there's no clickable Stop button — instead, **press Q** in the
+terminal running the bot to cancel at any time (`mac/keys.py`, using
+POSIX raw-mode stdin reading instead of Windows' `msvcrt`).
+
+### Setup
+
+```bash
+cd E7ShopBot/mac
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Permissions
+
+Grant these to your terminal (or the `.venv/bin/python` binary) under
+System Settings → Privacy & Security:
+- **Accessibility** — required to post synthetic mouse/scroll events.
+- **Screen Recording** — required for `CGWindowListCreateImage` to capture
+  the game window; without it, captures come back black/empty.
+
+### Run
+
+```bash
+python main.py
+```
+
+Press **Q** to stop.
+
+### Calibration
+
+The relative coordinates in `mac/config.py` are seeded from the Windows
+values but **will need recalibration** — the Mac window's aspect ratio/chrome
+differs from the Windows `GLFW30` window. Use:
+
+| Script                     | Purpose                                                   |
+| -------------------------- | ---------------------------------------------------------- |
+| `mac/find_window.py`       | List the Epic Seven window's pid / bounds                  |
+| `mac/ut/test_click.py`     | Fire a single click at a given `rx ry` (`--mode global`)    |
+| `mac/ut/test_capture.py`   | Save a screenshot + print Vision OCR lines/rects            |
+| `mac/ut/test_scroll.py`    | Repeat `scroll_down` every 1.5s until Q, to gauge scroll distance |
+
+## Known limitations (Mac)
+
+- **Takes over the real mouse** — clicks/scrolls move your actual cursor;
+  don't touch the mouse while the bot is running.
+- **Uncalibrated coordinates** — `mac/config.py`'s click/OCR regions are
+  starting guesses ported from Windows values, not yet verified against a
+  live window.
+- **Vision OCR differences** — Apple's Vision framework may group/recognize
+  shop text differently than Windows OCR did; keyword matches may need
+  adjusting in `mac/config.py`.
+- **No GUI yet** — `mac/main.py` is CLI-only (no gold/refresh limiter UI);
+  press Q to stop.
 
